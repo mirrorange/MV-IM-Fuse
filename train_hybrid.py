@@ -64,6 +64,7 @@ parser.add_argument('--num_mamba_blocks', default=1, type=int, help='MV-Mixer bl
 parser.add_argument('--num_attn_blocks', default=1, type=int, help='Attention block 数量')
 parser.add_argument('--drop_path', default=0.1, type=float, help='Drop path rate')
 parser.add_argument('--hybrid_mlp_ratio', default=4.0, type=float, help='Hybrid Encoder MLP ratio')
+parser.add_argument('--hybrid_layer_scale', default=1e-2, type=float, help='Hybrid Encoder residual layer scale; set <= 0 to disable')
 
 # 三阶段训练
 parser.add_argument('--stage', default=1, type=int, choices=[1, 2, 3], help='当前训练阶段')
@@ -499,6 +500,7 @@ def main():
         num_attn_blocks=args.num_attn_blocks,
         drop_path=args.drop_path,
         hybrid_mlp_ratio=args.hybrid_mlp_ratio,
+        hybrid_layer_scale=args.hybrid_layer_scale,
     )
     print(model)
 

@@ -435,6 +435,7 @@ class IMFuseHybrid(nn.Module):
         num_attn_blocks=1,
         drop_path=0.1,
         hybrid_mlp_ratio=4.0,
+        hybrid_layer_scale=1e-2,
     ):
         super(IMFuseHybrid, self).__init__()
         self.interleaved_tokenization = interleaved_tokenization
@@ -478,6 +479,7 @@ class IMFuseHybrid(nn.Module):
             num_heads=num_heads,
             mlp_ratio=hybrid_mlp_ratio,
             drop_path=drop_path,
+            layer_scale=hybrid_layer_scale if hybrid_layer_scale > 0 else None,
         )
         self.flair_hybrid_encoder = HybridTokenEncoder(**hybrid_kwargs)
         self.t1ce_hybrid_encoder = HybridTokenEncoder(**hybrid_kwargs)

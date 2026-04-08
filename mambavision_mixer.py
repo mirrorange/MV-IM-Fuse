@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-from timm.models.layers import DropPath
+from timm.layers import DropPath
 from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
 from einops import rearrange, repeat
 from torch.cuda.amp import autocast
@@ -307,7 +307,7 @@ class HybridTokenEncoder(nn.Module):
         num_heads=8,
         mlp_ratio=4.0,
         drop_path=0.1,
-        layer_scale=1e-5,
+        layer_scale=1e-2,
         d_state=16,
         d_conv=3,
         expand=1,
@@ -315,17 +315,19 @@ class HybridTokenEncoder(nn.Module):
         super().__init__()
         self.num_mamba_blocks = num_mamba_blocks
         self.num_attn_blocks = num_attn_blocks
+        total_depth = num_mamba_blocks + num_attn_blocks
+        drop_path_rates = torch.linspace(0, drop_path, total_depth).tolist() if total_depth > 0 else []
 
         blocks = []
         # Mamba blocks (前半部分)
-        for _ in range(num_mamba_blocks):
+        for block_index in range(num_mamba_blocks):
             blocks.append(
                 HybridBlock(
                     dim=dim,
                     use_attention=False,
                     num_heads=num_heads,
                     mlp_ratio=mlp_ratio,
-                    drop_path=drop_path,
+                    drop_path=drop_path_rates[block_index],
                     layer_scale=layer_scale,
                     d_state=d_state,
                     d_conv=d_conv,
@@ -333,14 +335,14 @@ class HybridTokenEncoder(nn.Module):
                 )
             )
         # Attention blocks (后半部分, Late Attention)
-        for _ in range(num_attn_blocks):
+        for block_index in range(num_attn_blocks):
             blocks.append(
                 HybridBlock(
                     dim=dim,
                     use_attention=True,
                     num_heads=num_heads,
                     mlp_ratio=mlp_ratio,
-                    drop_path=drop_path,
+                    drop_path=drop_path_rates[num_mamba_blocks + block_index],
                     layer_scale=layer_scale,
                 )
             )
