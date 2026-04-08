@@ -2,10 +2,12 @@ import torch
 from predict import AverageMeter, test_softmax
 from data.datasets_nii import Brats_loadall_test_nii
 from utils.lr_scheduler import MultiEpochsDataLoader 
+from utils.checkpoint import load_local_checkpoint
 from IMFuse import IMFuse
 import os
 import argparse
 
+path = os.path.dirname(__file__)
 
 parser = argparse.ArgumentParser()
 
@@ -17,7 +19,6 @@ parser.add_argument('--datapath', default=os.path.join(path, 'dataset', 'BRATS20
 parser.add_argument('--interleaved_tokenization', action='store_true', default=False)
 parser.add_argument('--mamba_skip', action='store_true', default=False)
 #parser.add_argument('--debug', action='store_true', default=False)
-path = os.path.dirname(__file__)
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -47,7 +48,7 @@ if __name__ == '__main__':
                 mamba_skip=args.mamba_skip
             )
     model = torch.nn.DataParallel(model).cuda()
-    checkpoint = torch.load(args.resume)
+    checkpoint = load_local_checkpoint(args.resume)
     model.load_state_dict(checkpoint['state_dict'])
     best_epoch = checkpoint['epoch'] + 1
     out_path = args.savepath

@@ -10,6 +10,7 @@ import torch.optim
 import sys
 # from tensorboardX import SummaryWriter
 from utils.random_seed import setup_seed
+from utils.checkpoint import load_local_checkpoint
 from IMFuse_no1skip import Model
 from data.transforms import *
 from data.datasets_nii import Brats_loadall_nii, Brats_loadall_test_nii, Brats_loadall_val_nii
@@ -19,6 +20,8 @@ from utils.parser import setup
 from utils.lr_scheduler import LR_Scheduler, record_loss, MultiEpochsDataLoader 
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from predict import AverageMeter, test_softmax
+
+path = os.path.dirname(__file__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-batch_size', '--batch_size', default=1, type=int, help='Batch size')
@@ -36,7 +39,6 @@ parser.add_argument('--seed', default=999, type=int)
 parser.add_argument('--debug', action='store_true', default=False)
 parser.add_argument('--interleaved_tokenization', action='store_true', default=False)
 parser.add_argument('--mamba_skip', action='store_true', default=False)
-path = os.path.dirname(__file__)
 
 ## parse arguments
 args = parser.parse_args()
@@ -185,7 +187,7 @@ def main():
 
     ##########Resume Training
     if args.resume is not None:
-        checkpoint = torch.load(args.resume)
+        checkpoint = load_local_checkpoint(args.resume)
         logging.info('best epoch: {}'.format(checkpoint['epoch']))
         model.load_state_dict(checkpoint['state_dict'])
         val_Dice_best = checkpoint['val_Dice_best']

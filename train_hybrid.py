@@ -17,6 +17,7 @@ import wandb
 import torch
 import torch.optim
 from utils.random_seed import setup_seed
+from utils.checkpoint import load_local_checkpoint
 from IMFuse_hybrid import IMFuseHybrid
 from data.transforms import *
 from data.datasets_nii import Brats_loadall_nii, Brats_loadall_test_nii, Brats_loadall_val_nii
@@ -228,7 +229,7 @@ def load_imfuse_pretrained(model, checkpoint_path):
     - 原始 Transformer 权重映射到 Hybrid Encoder 最后一个 Attention block
     - 新增 MV-Mixer 参数保持随机初始化
     """
-    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    checkpoint = load_local_checkpoint(checkpoint_path, map_location='cpu')
     pretrained_dict = checkpoint['state_dict']
 
     model_dict = model.state_dict()
@@ -347,7 +348,7 @@ def load_imfuse_pretrained(model, checkpoint_path):
 
 def load_stage_checkpoint(model, checkpoint_path):
     """加载阶段检查点到 IMFuseHybrid (完整模型权重)。"""
-    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    checkpoint = load_local_checkpoint(checkpoint_path, map_location='cpu')
     model.load_state_dict(checkpoint['state_dict'])
     return checkpoint
 

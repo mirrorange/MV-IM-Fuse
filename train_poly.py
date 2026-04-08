@@ -10,6 +10,7 @@ import torch.optim
 import sys
 # from tensorboardX import SummaryWriter
 from utils.random_seed import setup_seed
+from utils.checkpoint import load_local_checkpoint
 from IMFuse_no1skip import Model
 from IMFuse import IMFuse
 from data.transforms import *
@@ -22,6 +23,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from predict import AverageMeter, test_softmax
 
 DEBUG_ITER = 1
+
+path = os.path.dirname(__file__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', default=1, type=int, help='Batch size')
@@ -189,7 +192,7 @@ def main():
 
     ##########Resume Training
     if args.resume is not None:
-        checkpoint = torch.load(args.resume)
+        checkpoint = load_local_checkpoint(args.resume)
         logging.info('best epoch: {}'.format(checkpoint['epoch']))
         model.load_state_dict(checkpoint['state_dict'])
         val_Dice_best = checkpoint['val_Dice_best']

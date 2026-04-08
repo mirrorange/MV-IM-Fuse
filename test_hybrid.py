@@ -13,7 +13,10 @@ import numpy as np
 from predict import AverageMeter, test_softmax
 from data.datasets_nii import Brats_loadall_test_nii
 from utils.lr_scheduler import MultiEpochsDataLoader
+from utils.checkpoint import load_local_checkpoint
 from IMFuse_hybrid import IMFuseHybrid
+
+path = os.path.dirname(__file__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataname', default='BRATS2023', type=str)
@@ -28,8 +31,6 @@ parser.add_argument('--num_attn_blocks', default=1, type=int)
 parser.add_argument('--drop_path', default=0.1, type=float)
 parser.add_argument('--hybrid_mlp_ratio', default=4.0, type=float)
 parser.add_argument('--save_masks', action='store_true', default=False)
-
-path = os.path.dirname(__file__)
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -85,7 +86,7 @@ if __name__ == '__main__':
         hybrid_mlp_ratio=args.hybrid_mlp_ratio,
     )
     model = torch.nn.DataParallel(model).cuda()
-    checkpoint = torch.load(args.resume)
+    checkpoint = load_local_checkpoint(args.resume)
     model.load_state_dict(checkpoint['state_dict'])
     best_epoch = checkpoint['epoch'] + 1
     best_stage = checkpoint.get('stage', 'unknown')
