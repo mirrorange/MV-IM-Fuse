@@ -29,6 +29,8 @@ from predict import AverageMeter, test_softmax
 
 # ============ 命令行参数 ============
 
+path = os.path.dirname(__file__)
+
 parser = argparse.ArgumentParser()
 
 # 基础训练参数 (与 train_poly.py 一致)
