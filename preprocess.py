@@ -53,7 +53,7 @@ if __name__ == '__main__':
     #src_path = '/work/grana_neuro/ASNR-MICCAI-BraTS2023-GLI-Challenge-TrainingData'
     #tar_path = '/work/grana_neuro/missing_modalities/BRATS2023_Training_mmFormer_npy'
 
-    name_list = os.listdir(src_path)
+    name_list = sorted(os.listdir(src_path))
     if not os.path.exists(os.path.join(tar_path, 'vol')):
         os.makedirs(os.path.join(tar_path, 'vol'))
 
@@ -64,6 +64,17 @@ if __name__ == '__main__':
         print (file_name)
 
         case_id = file_name.split('/')[-1]
+        vol_out = os.path.join(tar_path, 'vol', case_id+'_vol.npy')
+        seg_out = os.path.join(tar_path, 'seg', case_id+'_seg.npy')
+
+        if os.path.exists(vol_out) and os.path.exists(seg_out):
+            continue
+
+        if os.path.exists(vol_out):
+            os.remove(vol_out)
+        if os.path.exists(seg_out):
+            os.remove(seg_out)
+
         flair, flair_header = medio.load(os.path.join(src_path, file_name, case_id+'-t2f.nii.gz'))
         t1ce, t1ce_header = medio.load(os.path.join(src_path, file_name, case_id+'-t1c.nii.gz'))
         t1, t1_header = medio.load(os.path.join(src_path, file_name, case_id+'-t1n.nii.gz'))
@@ -80,5 +91,5 @@ if __name__ == '__main__':
         seg1 = seg[x_min:x_max, y_min:y_max, z_min:z_max]
         seg1[seg1==4]=3
 
-        np.save(os.path.join(tar_path, 'vol', case_id+'_vol.npy'), vol1)
-        np.save(os.path.join(tar_path, 'seg', case_id+'_seg.npy'), seg1)
+        np.save(vol_out, vol1)
+        np.save(seg_out, seg1)
