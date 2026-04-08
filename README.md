@@ -36,9 +36,22 @@ python train_poly.py \
   --num_epochs 1000 \                          # Total number of training epochs
   --dataname BRATS2023 \                       # Dataset identifier
   --savepath <OUTPUT_PATH> \                   # Directory for saving checkpoints 
+  --tb_log_interval 10 \                       # Log TensorBoard scalars every 10 steps
+  --tb_image_interval 200 \                    # Log center-slice previews every 200 steps
   --mamba_skip \                               # Using Mamba in the skip connections
   --interleaved_tokenization                   # Enable interleaved tokenization
 ```
+
+W&B logging is disabled by default for all training scripts, so training does not require a W&B account or online login.
+Use `--wandb_mode offline` to keep local W&B logs only, or `--wandb_mode online` if you explicitly want cloud sync.
+You can also pass `--no_wandb` to force-disable W&B explicitly.
+
+TensorBoard logs are enabled by default and written to `<OUTPUT_PATH>/tensorboard`.
+Launch TensorBoard with:
+```
+tensorboard --logdir <OUTPUT_PATH>/tensorboard --bind_all
+```
+If you want to disable TensorBoard logging for a run, add `--no_tensorboard`.
 
 ### Test
 Run the test script `test.py` with the following arguments:

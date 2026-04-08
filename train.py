@@ -8,8 +8,19 @@ import wandb
 import torch
 import torch.optim
 import sys
-# from tensorboardX import SummaryWriter
 from utils.random_seed import setup_seed
+from utils.checkpoint import load_local_checkpoint
+from utils.tensorboard import (
+    add_tensorboard_args,
+    compute_global_norm,
+    create_tensorboard_writer,
+    log_learning_rates,
+    log_mask_stats,
+    log_parameter_histograms,
+    log_preview_batch,
+    log_scalars,
+)
+from utils.wandb_utils import add_wandb_args, init_wandb_run, resolve_wandb_mode
 from IMFuse_no1skip import Model
 from data.transforms import *
 from data.datasets_nii import Brats_loadall_nii, Brats_loadall_test_nii, Brats_loadall_val_nii
@@ -20,9 +31,11 @@ from utils.lr_scheduler import LR_Scheduler, record_loss, MultiEpochsDataLoader
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from predict import AverageMeter, test_softmax
 
+path = os.path.dirname(__file__)
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-batch_size', '--batch_size', default=1, type=int, help='Batch size')
-parser.add_argument('--datapath', default=None, type=str)
+parser.add_argument('--datapath', default=os.path.join(path, 'dataset', 'BRATS2023_Training_npy'), type=str)
 parser.add_argument('--dataname', default='BRATS2018', type=str)
 parser.add_argument('--savepath', default=None, type=str)
 parser.add_argument('--resume', default=None, type=str)
@@ -36,7 +49,8 @@ parser.add_argument('--seed', default=999, type=int)
 parser.add_argument('--debug', action='store_true', default=False)
 parser.add_argument('--interleaved_tokenization', action='store_true', default=False)
 parser.add_argument('--mamba_skip', action='store_true', default=False)
-path = os.path.dirname(__file__)
+add_tensorboard_args(parser)
+add_wandb_args(parser)
 
 ## parse arguments
 args = parser.parse_args()
@@ -77,16 +91,12 @@ def main():
     ##########init wandb
     slurm_job_id = os.getenv("SLURM_JOB_ID") 
     wandb_name_and_id = f'BraTS23_IMFuse{"Interleaved" if args.interleaved_tokenization else ""}{"Skip" if args.mamba_skip else ""}_epoch{args.num_epochs}_iter{args.iter_per_epoch}_jobid{slurm_job_id}'
-    wandb_mode = 'online'
-    # if args.debug:
-    #     wandb_mode = 'disabled'
-    wandb.init(
+    wandb_mode = resolve_wandb_mode(args)
+    print(f"W&B mode: {wandb_mode}", flush=True)
+    init_wandb_run(
+        args=args,
         project="SegmentationMM",
-        name=wandb_name_and_id,
-        # entity="NeuroTumor",
-        id=wandb_name_and_id,
-        mode=wandb_mode,
-        resume="allow",
+        run_name=wandb_name_and_id,
         config={
             "architecture": "IMFuse",
             "learning_rate": args.lr,
@@ -96,8 +106,8 @@ def main():
             "datapath": args.datapath,
             "region_fusion_start_epoch": args.region_fusion_start_epoch,
             "interleaved_tokenization": args.interleaved_tokenization,
-            "mamba_skip": args.mamba_skip
-        }
+            "mamba_skip": args.mamba_skip,
+        },
     )
     
     ##########setting models
@@ -131,7 +141,7 @@ def main():
     ########## Setting data
     if args.dataname in ['BRATS2023', 'BRATS2020', 'BRATS2015']:
         train_file = 'datalist/train.txt'
-        test_file = 'datalist/test15splits2.csv'
+        test_file = 'datalist/test15splits.csv'
         val_file = 'datalist/val15splits.csv'
         #test_file = 'datalist/test.txt'
         #val_file = 'datalist/val.txt'
@@ -185,12 +195,27 @@ def main():
 
     ##########Resume Training
     if args.resume is not None:
-        checkpoint = torch.load(args.resume)
+        checkpoint = load_local_checkpoint(args.resume)
         logging.info('best epoch: {}'.format(checkpoint['epoch']))
         model.load_state_dict(checkpoint['state_dict'])
         val_Dice_best = checkpoint['val_Dice_best']
         optimizer.load_state_dict(checkpoint['optim_dict'])
         start_epoch = checkpoint['epoch'] + 1
+
+    writer = create_tensorboard_writer(
+        args,
+        run_name=wandb_name_and_id,
+        purge_step=start_epoch * iter_per_epoch if start_epoch > 0 else None,
+    )
+    if writer is not None:
+        log_scalars(
+            writer,
+            {
+                'meta/start_epoch': start_epoch,
+                'meta/trainable_parameters': sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad),
+            },
+            0,
+        )
 
     for epoch in range(start_epoch, args.num_epochs):
         # step_lr = lr_schedule(optimizer, epoch)
@@ -209,13 +234,16 @@ def main():
 
         ########## training epoch
         for i in range(iter_per_epoch):
+            iter_start = time.time()
             step = (i+1) + epoch*iter_per_epoch
             ###Data load
+            data_start = time.time()
             try:
                 data = next(train_iter)
             except:
                 train_iter = iter(train_loader)
                 data = next(train_iter)
+            data_time = time.time() - data_start
             x, target, mask = data[:3] #x=(B, M=4, 128, 128, 128), target = (B, C, 128, 128, 128), mask = (B, 4)
             x = x.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
@@ -267,6 +295,37 @@ def main():
             loss.backward()
             optimizer.step()
 
+            batch_time = time.time() - iter_start
+
+            if writer is not None and (step == 1 or step % args.tb_log_interval == 0):
+                log_scalars(
+                    writer,
+                    {
+                        'train_step/loss': loss.item(),
+                        'train_step/fuse_cross_loss': fuse_cross_loss.item(),
+                        'train_step/fuse_dice_loss': fuse_dice_loss.item(),
+                        'train_step/sep_cross_loss': sep_cross_loss.item(),
+                        'train_step/sep_dice_loss': sep_dice_loss.item(),
+                        'train_step/prm_cross_loss': prm_cross_loss.item(),
+                        'train_step/prm_dice_loss': prm_dice_loss.item(),
+                        'train_step/grad_norm': compute_global_norm(model.parameters(), use_grad=True),
+                        'time/batch_seconds': batch_time,
+                        'time/data_seconds': data_time,
+                    },
+                    step,
+                )
+                log_learning_rates(writer, optimizer, step)
+                log_mask_stats(writer, mask, step, prefix='train_step/mask')
+                if args.tb_image_interval > 0 and (step == 1 or step % args.tb_image_interval == 0):
+                    log_preview_batch(
+                        writer,
+                        tag='train_preview',
+                        inputs=x,
+                        target=target,
+                        prediction=fuse_pred,
+                        step=step,
+                    )
+
             ###log
             # writer.add_scalar('loss', loss.item(), global_step=step)
             # writer.add_scalar('fuse_cross_loss', fuse_cross_loss.item(), global_step=step)
@@ -302,6 +361,31 @@ def main():
             "train/prmdice": prm_dice_loss_epoch.cpu().detach().item() / iter_per_epoch,
             "train/learning_rate": lr_schedule.get_lr()[0],
         })
+        if writer is not None:
+            log_scalars(
+                writer,
+                {
+                    'train_epoch/loss': loss_epoch.cpu().detach().item() / iter_per_epoch,
+                    'train_epoch/fuse_cross_loss': fuse_cross_loss_epoch.cpu().detach().item() / iter_per_epoch,
+                    'train_epoch/fuse_dice_loss': fuse_dice_loss_epoch.cpu().detach().item() / iter_per_epoch,
+                    'train_epoch/sep_cross_loss': sep_cross_loss_epoch.cpu().detach().item() / iter_per_epoch,
+                    'train_epoch/sep_dice_loss': sep_dice_loss_epoch.cpu().detach().item() / iter_per_epoch,
+                    'train_epoch/prm_cross_loss': prm_cross_loss_epoch.cpu().detach().item() / iter_per_epoch,
+                    'train_epoch/prm_dice_loss': prm_dice_loss_epoch.cpu().detach().item() / iter_per_epoch,
+                    'train_epoch/learning_rate': lr_schedule.get_lr()[0],
+                    'time/epoch_seconds': time.time() - b,
+                },
+                epoch + 1,
+            )
+            if val_Dice_best > -999999:
+                writer.add_scalar('meta/best_val_dice', val_Dice_best, epoch + 1)
+            if args.tb_histogram_interval > 0 and (epoch + 1) % args.tb_histogram_interval == 0:
+                log_parameter_histograms(
+                    writer,
+                    model,
+                    epoch + 1,
+                    max_parameters=args.tb_histogram_limit,
+                )
 
         file_name = os.path.join(ckpts, 'model_last.pth')
         torch.save({
@@ -333,6 +417,19 @@ def main():
                 "val/val_Dice": val_dice.item(), 
                 "val/seg_loss": seg_loss.cpu().item(),       
             })
+            if writer is not None:
+                log_scalars(
+                    writer,
+                    {
+                        'val/WT': val_WT.item(),
+                        'val/TC': val_TC.item(),
+                        'val/ET': val_ET.item(),
+                        'val/ETpp': val_ETpp.item(),
+                        'val/Dice': val_dice.item(),
+                        'val/seg_loss': seg_loss.cpu().item(),
+                    },
+                    epoch + 1,
+                )
             
             if val_dice > val_Dice_best:
                 val_Dice_best = val_dice.item()
@@ -364,6 +461,19 @@ def main():
                 "test/test_Dice": test_dice.item(),  
                 "test/seg_loss": seg_loss.cpu().item(),   
             })
+            if writer is not None:
+                log_scalars(
+                    writer,
+                    {
+                        'test/WT': test_WT.item(),
+                        'test/TC': test_TC.item(),
+                        'test/ET': test_ET.item(),
+                        'test/ETpp': test_ETpp.item(),
+                        'test/Dice': test_dice.item(),
+                        'test/seg_loss': seg_loss.cpu().item(),
+                    },
+                    epoch + 1,
+                )
 
             model.train()
             model.module.is_training=True
@@ -371,6 +481,8 @@ def main():
 
     msg = 'total time: {:.4f} hours'.format((time.time() - start)/3600)
     logging.info(msg)
+    if writer is not None:
+        writer.close()
 
     ##########Evaluate the last epoch model
     """
