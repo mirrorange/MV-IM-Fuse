@@ -20,6 +20,7 @@ from utils.tensorboard import (
     log_preview_batch,
     log_scalars,
 )
+from utils.wandb_utils import add_wandb_args, init_wandb_run, resolve_wandb_mode
 from IMFuse_no1skip import Model
 from data.transforms import *
 from data.datasets_nii import Brats_loadall_nii, Brats_loadall_test_nii, Brats_loadall_val_nii
@@ -49,6 +50,7 @@ parser.add_argument('--debug', action='store_true', default=False)
 parser.add_argument('--interleaved_tokenization', action='store_true', default=False)
 parser.add_argument('--mamba_skip', action='store_true', default=False)
 add_tensorboard_args(parser)
+add_wandb_args(parser)
 
 ## parse arguments
 args = parser.parse_args()
@@ -89,16 +91,12 @@ def main():
     ##########init wandb
     slurm_job_id = os.getenv("SLURM_JOB_ID") 
     wandb_name_and_id = f'BraTS23_IMFuse{"Interleaved" if args.interleaved_tokenization else ""}{"Skip" if args.mamba_skip else ""}_epoch{args.num_epochs}_iter{args.iter_per_epoch}_jobid{slurm_job_id}'
-    wandb_mode = 'online'
-    # if args.debug:
-    #     wandb_mode = 'disabled'
-    wandb.init(
+    wandb_mode = resolve_wandb_mode(args)
+    print(f"W&B mode: {wandb_mode}", flush=True)
+    init_wandb_run(
+        args=args,
         project="SegmentationMM",
-        name=wandb_name_and_id,
-        # entity="NeuroTumor",
-        id=wandb_name_and_id,
-        mode=wandb_mode,
-        resume="allow",
+        run_name=wandb_name_and_id,
         config={
             "architecture": "IMFuse",
             "learning_rate": args.lr,
@@ -108,8 +106,8 @@ def main():
             "datapath": args.datapath,
             "region_fusion_start_epoch": args.region_fusion_start_epoch,
             "interleaved_tokenization": args.interleaved_tokenization,
-            "mamba_skip": args.mamba_skip
-        }
+            "mamba_skip": args.mamba_skip,
+        },
     )
     
     ##########setting models

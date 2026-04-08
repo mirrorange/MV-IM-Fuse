@@ -42,6 +42,10 @@ python train_poly.py \
   --interleaved_tokenization                   # Enable interleaved tokenization
 ```
 
+W&B logging is disabled by default for all training scripts, so training does not require a W&B account or online login.
+Use `--wandb_mode offline` to keep local W&B logs only, or `--wandb_mode online` if you explicitly want cloud sync.
+You can also pass `--no_wandb` to force-disable W&B explicitly.
+
 TensorBoard logs are enabled by default and written to `<OUTPUT_PATH>/tensorboard`.
 Launch TensorBoard with:
 ```

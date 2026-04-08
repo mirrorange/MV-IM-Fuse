@@ -28,6 +28,7 @@ from utils.tensorboard import (
     log_preview_batch,
     log_scalars,
 )
+from utils.wandb_utils import add_wandb_args, init_wandb_run, resolve_wandb_mode
 from IMFuse_hybrid import IMFuseHybrid
 from data.transforms import *
 from data.datasets_nii import Brats_loadall_nii, Brats_loadall_test_nii, Brats_loadall_val_nii
@@ -77,6 +78,7 @@ parser.add_argument('--stage_resume', default=None, type=str, help='当前阶段
 # 验证频率
 parser.add_argument('--val_interval', default=10, type=int, help='验证间隔 (epochs)')
 add_tensorboard_args(parser)
+add_wandb_args(parser)
 
 path = os.path.dirname(__file__)
 
@@ -420,12 +422,12 @@ def main():
     slurm_job_id = os.getenv("SLURM_JOB_ID", "local")
     exp_name = f'E{args.num_mamba_blocks}M{args.num_attn_blocks}A'
     wandb_name = f'{args.dataname}_Hybrid_{exp_name}_S{stage}_jobid{slurm_job_id}'
-    wandb.init(
+    wandb_mode = resolve_wandb_mode(args)
+    print(f"W&B mode: {wandb_mode}", flush=True)
+    init_wandb_run(
+        args=args,
         project="SegmentationMM",
-        name=wandb_name,
-        id=wandb_name,
-        mode='online',
-        resume="allow",
+        run_name=wandb_name,
         config={
             "architecture": f"IMFuseHybrid_{exp_name}",
             "stage": stage,
